@@ -103,7 +103,7 @@ body {
   max-height: 100%;
 }
 
-/* Toolbar - appears on hover */
+/* Toolbar */
 .toolbar {
   display: flex;
   gap: 1rem;
@@ -111,11 +111,11 @@ body {
   top: 8px;
   right: 8px;
   z-index: 100;
-  opacity: 0;
+  opacity: 0.85;
   transition: opacity 0.2s ease;
 }
 
-.main:hover .toolbar {
+.toolbar:hover {
   opacity: 1;
 }
 

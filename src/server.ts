@@ -527,8 +527,60 @@ However, if the user wants to edit something on this diagram "${checkpointId}", 
         };
       }
       try {
-        // --- Excalidraw v2 binary format ---
-        const remappedJson = json;
+        const parsed = JSON.parse(json);
+        const elements = Array.isArray(parsed)
+          ? parsed
+          : (parsed && typeof parsed === "object" && Array.isArray(parsed.elements))
+            ? parsed.elements
+            : [];
+
+        // 1. Filtrar pseudo-elementos de control del MCP
+        const cleanElements = elements
+          .filter((el: any) => el.type !== "cameraUpdate" && el.type !== "delete" && el.type !== "restoreCheckpoint")
+          .map((el: any, index: number) => {
+            // Rellenar campos mínimos de Excalidraw para evitar excepciones
+            const fontSize = el.fontSize || 16;
+            let width = el.width || 100;
+            let height = el.height || 100;
+
+            if (el.type === "text" && el.text) {
+              const lines = String(el.text).split("\n");
+              const longestLine = lines.reduce((max, line) => line.length > max ? line.length : max, 0);
+              width = longestLine * fontSize * 0.55; // Ajuste empírico de ancho por caracter
+              height = lines.length * fontSize * 1.3; // Ajuste empírico de alto por salto de línea
+            }
+
+            return {
+              id: el.id || `el_${index}`,
+              type: el.type || "rectangle",
+              x: el.x || 0,
+              y: el.y || 0,
+              width: width,
+              height: height,
+              angle: el.angle || 0,
+              strokeWidth: el.strokeWidth || 2,
+              roughness: el.roughness || 1,
+              opacity: el.opacity || 100,
+              seed: el.seed || Math.floor(Math.random() * 1e9),
+              version: el.version || 1,
+              versionNonce: el.versionNonce || Math.floor(Math.random() * 1e9),
+              isDeleted: false,
+              updated: Date.now(),
+              ...el
+            };
+          });
+
+        // Re-estructurar al formato de escena v2 esperado por la web oficial
+        const remappedJson = JSON.stringify({
+          type: "excalidraw",
+          version: 2,
+          source: "https://excalidraw.com",
+          elements: cleanElements,
+          appState: {
+            viewBackgroundColor: "#ffffff",
+            gridSize: null
+          }
+        });
         // concatBuffers: [version=1 (4B)] [len₁ (4B)] [data₁] [len₂ (4B)] [data₂] ...
         const concatBuffers = (...bufs: Uint8Array[]): Uint8Array => {
           let total = 4; // version header
