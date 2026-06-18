@@ -528,15 +528,87 @@ However, if the user wants to edit something on this diagram "${checkpointId}", 
       }
       try {
         const parsed = JSON.parse(json);
-        const elements = Array.isArray(parsed)
+        const rawElements = Array.isArray(parsed)
           ? parsed
           : (parsed && typeof parsed === "object" && Array.isArray(parsed.elements))
             ? parsed.elements
             : [];
 
+        // Pre-process elements to expand shorthand 'label' property to standard Excalidraw bound text elements
+        const elements: any[] = [];
+        for (const el of rawElements) {
+          if (el && el.label && el.type !== "text" && el.type !== "cameraUpdate" && el.type !== "delete" && el.type !== "restoreCheckpoint") {
+            const textId = el.label.id || `${el.id}_text`;
+            
+            // Link text to shape
+            const shapeBoundElements = Array.isArray(el.boundElements) ? [...el.boundElements] : [];
+            if (!shapeBoundElements.some((be: any) => be.id === textId)) {
+              shapeBoundElements.push({ type: "text", id: textId });
+            }
+            
+            const shapeEl = {
+              ...el,
+              boundElements: shapeBoundElements,
+            };
+            delete shapeEl.label;
+            elements.push(shapeEl);
+            
+            // Calculate center/position for text element
+            const fontSize = el.label.fontSize || 16;
+            const textContent = el.label.text || "";
+            const lines = String(textContent).split("\n");
+            const longestLine = lines.reduce((max, line) => line.length > max ? line.length : max, 0);
+            const textWidth = longestLine * fontSize * 0.55;
+            const textHeight = lines.length * fontSize * 1.3;
+            
+            let textX = el.x || 0;
+            let textY = el.y || 0;
+            
+            if (el.type === "arrow") {
+              if (Array.isArray(el.points) && el.points.length >= 2) {
+                let totalX = 0;
+                let totalY = 0;
+                for (const pt of el.points) {
+                  totalX += pt[0];
+                  totalY += pt[1];
+                }
+                const avgX = totalX / el.points.length;
+                const avgY = totalY / el.points.length;
+                textX = (el.x || 0) + avgX - textWidth / 2;
+                textY = (el.y || 0) + avgY - textHeight / 2;
+              } else {
+                textX = (el.x || 0) + (el.width || 100) / 2 - textWidth / 2;
+                textY = (el.y || 0) + (el.height || 20) / 2 - textHeight / 2;
+              }
+            } else {
+              textX = (el.x || 0) + ((el.width || 100) - textWidth) / 2;
+              textY = (el.y || 0) + ((el.height || 100) - textHeight) / 2;
+            }
+            
+            const textEl = {
+              id: textId,
+              type: "text",
+              x: textX,
+              y: textY,
+              width: textWidth,
+              height: textHeight,
+              text: textContent,
+              fontSize: fontSize,
+              containerId: el.id,
+              textAlign: el.label.textAlign || "center",
+              verticalAlign: el.label.verticalAlign || "middle",
+              strokeColor: el.label.strokeColor || el.strokeColor || "#1e1e1e",
+              fontFamily: el.label.fontFamily || 1,
+            };
+            elements.push(textEl);
+          } else {
+            elements.push(el);
+          }
+        }
+
         // 1. Filtrar pseudo-elementos de control del MCP
         const cleanElements = elements
-          .filter((el: any) => el.type !== "cameraUpdate" && el.type !== "delete" && el.type !== "restoreCheckpoint")
+          .filter((el: any) => el && el.type !== "cameraUpdate" && el.type !== "delete" && el.type !== "restoreCheckpoint")
           .map((el: any, index: number) => {
             // Rellenar campos mínimos de Excalidraw para evitar excepciones
             const fontSize = el.fontSize || 16;
